@@ -122,9 +122,25 @@ if __name__ == '__main__':
 	q_learning = Q_Learning([DIGIT_NUM**4, 2])
 	env = gym.make('CartPole-v0')
 	
-	print('[Spec]')
-	print(' * Observation: (Cart Position, Cart Velocity, Pole Anble, Pole Velocity At Tip)')
-	print(' * Actions: 0-Push cart to the left, 1-Push cart to the right')
+	print('[Spec] https://github.com/openai/gym/blob/master/gym/envs/classic_control/cartpole.py')
+	print(' * Observation:')
+	print('     Type: Box(4)')
+	print('     Num     Observation               Min             Max')
+	print('     0       Cart Position             -4.8            4.8')
+	print('     1       Cart Velocity             -Inf            Inf')
+	print('     2       Pole Angle                -24 deg         24 deg')
+	print('     3       Pole Velocity At Tip      -Inf            Inf')
+	print(' * Actions:')
+	print('     Type: Discrete(2)')
+	print('     Num  Action')
+	print('     0    Push cart to the left')
+	print('     1    Push cart to the right')
+	print(' * Episode Termination:')
+	print('     Pole Angle is more than 12 degrees.')
+	print('     Cart Position is more than 2.4 (center of the cart reaches the edge of the display).')
+	print('     Episode length is greater than 200.')
+	print(' * Solved Requirements:')
+	print('     Considered solved when the average reward is greater than or equal to 195.0 over 100 consecutive trials.')
 	
 	log_header = ['episode', 'iter', 'episode_reward']
 	log_data = None
@@ -136,31 +152,12 @@ if __name__ == '__main__':
 		for t in range(1000):  
 			env.render()
 			
-#			action = env.action_space.sample()
-			
-#			sum_obs = np.sum(observation)
-#			if (sum_obs > 0):
-#				action = 1
-#			else:
-#				action = 0
-			
-#			if (observation[2] > 0):
-#				action = 1
-#			else:
-#				action = 0
-			
 			action = q_learning.get_action(observation_digitized, episode)
 			observation, reward, done, info = env.step(action)
 			
-			if (done):
-				if (t < 195):
-					# 失敗
-					reward = -200
-				else:
-					# 成功
-					reward = 1
-			else:
-				reward = 1
+			if ((done) and (t < 195)):
+				# 失敗
+				reward = -200
 			episode_reward += reward
 			
 			# Qテーブル更新
