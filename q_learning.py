@@ -29,6 +29,10 @@ import matplotlib.pyplot as plt
 # 定数定義
 #---------------------------------
 DIGIT_NUM = 16
+MAX_EPISODES = 2000
+MAX_EPISODE_LENGTH = 200
+EPISODE_REWARD_TH = 195
+REWARD_PENALTY = -200
 
 #---------------------------------
 # 関数
@@ -144,20 +148,20 @@ if __name__ == '__main__':
 	
 	log_header = ['episode', 'iter', 'episode_reward']
 	log_data = None
-	for episode in range(2000):
+	for episode in range(MAX_EPISODES):
 		observation = env.reset()
 		observation_digitized = DigitizeState(observation)
 		episode_reward = 0
 		
-		for t in range(1000):  
+		for t in range(MAX_EPISODE_LENGTH):  
 			env.render()
 			
 			action = q_learning.get_action(observation_digitized, episode)
 			observation, reward, done, info = env.step(action)
 			
-			if ((done) and (t < 195)):
+			if ((done) and (t < EPISODE_REWARD_TH)):
 				# 失敗
-				reward = -200
+				reward = REWARD_PENALTY
 			episode_reward += reward
 			
 			# Qテーブル更新
