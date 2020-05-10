@@ -45,6 +45,8 @@ MEMORY_SIZE = 10000
 BATCH_SIZE = 32
 TRAIN_DONE_TH = 10
 
+MODEL_FILE = 'dqn_model.h5'
+
 #---------------------------------
 # 関数
 #---------------------------------
@@ -57,6 +59,8 @@ def ArgParser():
 	parser = argparse.ArgumentParser(description='DQN')
 	
 	# --- 引数を追加 ---
+	parser.add_argument('--train_on', dest='train_on', action='store_true', help='学習時指定', required=False)
+	parser.add_argument('--model_file', dest='model_file', type=str, default=MODEL_FILE, help='モデルファイル', required=False)
 #	parser.add_argument('--str', dest='str', type=str, help='この引数の説明', required=True)
 #	parser.add_argument('--int', dest='int', type=int, default=-1, help='この引数の説明', required=True)
 #	parser.add_argument('--flag', dest='flag', action='store_true', help='この引数の説明', required=True)
@@ -106,11 +110,16 @@ class DQN:
 		
 	# --- 次のアクションを取得(ε-greedy法) ---
 	def get_action(self, state, episode):
-		epsilon = 0.5 * (1 / (episode + 1))
-		if epsilon <= np.random.uniform(0, 1):
+		if (episode < 0):
+			# --- 推論時 ---
 			next_action = np.argmax(self.model.predict(state)[0])
 		else:
-			next_action = np.random.choice([0, 1])
+			# --- 学習時 ---
+			epsilon = 0.5 * (1 / (episode + 1))
+			if epsilon <= np.random.uniform(0, 1):
+				next_action = np.argmax(self.model.predict(state)[0])
+			else:
+				next_action = np.random.choice([0, 1])
 		
 		return next_action
 	
@@ -142,107 +151,132 @@ if __name__ == '__main__':
 	# --- 引数処理 ---
 	args = ArgParser()
 	
-	# --- Q学習オブジェクト作成 ---
-	main_qn = DQN(OBSERVATION_SIZE, ACTION_SIZE)
-	target_qn = DQN(OBSERVATION_SIZE, ACTION_SIZE)
-	env = gym.make('CartPole-v0')
-	
-	# --- エピソードデータ蓄積用バッファ(Fixed target Q-Network, Experience replay用) ---
-	#   https://www.renom.jp/ja/notebooks/tutorial/reinforcement_learning/DQN-theory/notebook.html
-	memory = Memory(max_size=MEMORY_SIZE)
-	
-	print('[Spec] https://github.com/openai/gym/blob/master/gym/envs/classic_control/cartpole.py')
-	print(' * Observation:')
-	print('     Type: Box(4)')
-	print('     Num     Observation               Min             Max')
-	print('     0       Cart Position             -4.8            4.8')
-	print('     1       Cart Velocity             -Inf            Inf')
-	print('     2       Pole Angle                -24 deg         24 deg')
-	print('     3       Pole Velocity At Tip      -Inf            Inf')
-	print(' * Actions:')
-	print('     Type: Discrete(2)')
-	print('     Num  Action')
-	print('     0    Push cart to the left')
-	print('     1    Push cart to the right')
-	print(' * Episode Termination:')
-	print('     Pole Angle is more than 12 degrees.')
-	print('     Cart Position is more than 2.4 (center of the cart reaches the edge of the display).')
-	print('     Episode length is greater than 200.')
-	print(' * Solved Requirements:')
-	print('     Considered solved when the average reward is greater than or equal to 195.0 over 100 consecutive trials.')
-	
-	log_header = ['episode', 'iter', 'episode_reward']
-	log_data = None
-	
-	goal_count = 0
-	
-	for episode in range(MAX_EPISODES):
-		observation = env.reset()
-#		observation_digitized = DigitizeState(observation)
-		episode_reward = 0
+	if (args.train_on):
+		# --- Q学習オブジェクト作成 ---
+		main_qn = DQN(OBSERVATION_SIZE, ACTION_SIZE)
+		target_qn = DQN(OBSERVATION_SIZE, ACTION_SIZE)
+		env = gym.make('CartPole-v0')
+		
+		# --- エピソードデータ蓄積用バッファ(Fixed target Q-Network, Experience replay用) ---
+		#   https://www.renom.jp/ja/notebooks/tutorial/reinforcement_learning/DQN-theory/notebook.html
+		memory = Memory(max_size=MEMORY_SIZE)
+		
+		print('[Spec] https://github.com/openai/gym/blob/master/gym/envs/classic_control/cartpole.py')
+		print(' * Observation:')
+		print('     Type: Box(4)')
+		print('     Num     Observation               Min             Max')
+		print('     0       Cart Position             -4.8            4.8')
+		print('     1       Cart Velocity             -Inf            Inf')
+		print('     2       Pole Angle                -24 deg         24 deg')
+		print('     3       Pole Velocity At Tip      -Inf            Inf')
+		print(' * Actions:')
+		print('     Type: Discrete(2)')
+		print('     Num  Action')
+		print('     0    Push cart to the left')
+		print('     1    Push cart to the right')
+		print(' * Episode Termination:')
+		print('     Pole Angle is more than 12 degrees.')
+		print('     Cart Position is more than 2.4 (center of the cart reaches the edge of the display).')
+		print('     Episode length is greater than 200.')
+		print(' * Solved Requirements:')
+		print('     Considered solved when the average reward is greater than or equal to 195.0 over 100 consecutive trials.')
+		
+		log_header = ['episode', 'iter', 'episode_reward']
+		log_data = None
+		
+		goal_count = 0
+		
+		for episode in range(MAX_EPISODES):
+			observation = env.reset()
+#			observation_digitized = DigitizeState(observation)
+			episode_reward = 0
+			
+			action = random.choice([0, 1])
+			observation, reward, done, info = env.step(action)
+			observation = observation.reshape([1, -1])
+			
+			target_qn.model.set_weights(main_qn.model.get_weights())
+			
+			for t in range(MAX_EPISODE_LENGTH):
+				
+				action = main_qn.get_action(observation, episode)
+				next_observation, reward, done, info = env.step(action)
+				next_observation = next_observation.reshape([1, -1])
+				
+				if (done):
+					next_observation = np.zeros(observation.shape)
+					if (t < EPISODE_REWARD_TH):
+						# 失敗
+						reward = REWARD_PENALTY
+				else:
+					reward = 0
+				
+				episode_reward += 1
+				
+				# --- メモリ更新 ---
+				memory.append((observation, action, reward, next_observation))
+				
+				# --- 観測値更新 ---
+				observation = next_observation
+				
+				# --- 重み更新 ---
+				if (memory.len() > BATCH_SIZE):
+					main_qn.fit(memory, BATCH_SIZE, target_qn)
+					target_qn.model.set_weights(main_qn.model.get_weights())
+				
+				if (done):
+					if (log_data is None):
+						log_data = np.array([episode, t, episode_reward])
+					else:
+						log_data = np.vstack((log_data, [episode, t, episode_reward]))
+					
+					if (episode_reward >= EPISODE_REWARD_TH):
+						goal_count += 1
+					else:
+						goal_count = 0
+					
+					print('Episode {} Done: t={}, episode_reward={}, goal_count={}'.format(episode, t, episode_reward, goal_count))
+					
+					break
+					
+			if (goal_count >= TRAIN_DONE_TH):
+				break
+			
+		env.close()
+		
+		pd.DataFrame(log_data).to_csv('dqn_log.csv', header=log_header, index=False)
+		
+		fig = plt.figure(0)
+		plt.plot(log_data[:, 0], log_data[:, 2])
+		plt.savefig('dqn_log_graph.png')
+		plt.show()
+		plt.close(fig)
+		
+		np.save('dqn_weights.npy', main_qn.model.get_weights())
+		main_qn.model.save(args.model_file)
+	else:
+		# --- モデル読み込み ---
+		main_qn = DQN(OBSERVATION_SIZE, ACTION_SIZE)
+		main_qn.model = tf.keras.models.load_model(args.model_file)
+		
+		# --- CartPole環境構築 ---
+		env = gym.make('CartPole-v0')
+		env.reset()
 		
 		action = random.choice([0, 1])
 		observation, reward, done, info = env.step(action)
 		observation = observation.reshape([1, -1])
 		
-		target_qn.model.set_weights(main_qn.model.get_weights())
-		
 		for t in range(MAX_EPISODE_LENGTH):
-#			env.render()
+			env.render()
 			
-			action = main_qn.get_action(observation, episode)
-			next_observation, reward, done, info = env.step(action)
-			next_observation = next_observation.reshape([1, -1])
+			action = main_qn.get_action(observation, -1)
+			observation, reward, done, info = env.step(action)
+			observation = observation.reshape([1, -1])
 			
-			if (done):
-				next_observation = np.zeros(observation.shape)
-				if (t < EPISODE_REWARD_TH):
-					# 失敗
-					reward = REWARD_PENALTY
-			else:
-				reward = 0
-			
-			episode_reward += 1
-			
-			# --- メモリ更新 ---
-			memory.append((observation, action, reward, next_observation))
-			
-			# --- 観測値更新 ---
-			observation = next_observation
-			
-			# --- 重み更新 ---
-			if (memory.len() > BATCH_SIZE):
-				main_qn.fit(memory, BATCH_SIZE, target_qn)
-				target_qn.model.set_weights(main_qn.model.get_weights())
+			print('#{:03} observation={}, reward={}, done={}'.format(t, observation, reward, done))
 			
 			if (done):
-				if (log_data is None):
-					log_data = np.array([episode, t, episode_reward])
-				else:
-					log_data = np.vstack((log_data, [episode, t, episode_reward]))
-				
-				if (episode_reward >= EPISODE_REWARD_TH):
-					goal_count += 1
-				else:
-					goal_count = 0
-				
-				print('Episode {} Done: t={}, episode_reward={}, goal_count={}'.format(episode, t, episode_reward, goal_count))
-				
 				break
-				
-		if (goal_count >= TRAIN_DONE_TH):
-			break
+			
 		
-	env.close()
-	
-	pd.DataFrame(log_data).to_csv('dqn_log.csv', header=log_header, index=False)
-	
-	fig = plt.figure(0)
-	plt.plot(log_data[:, 0], log_data[:, 2])
-	plt.savefig('dqn_log_graph.png')
-	plt.show()
-	plt.close(fig)
-	
-	np.save('dqn_weights.npy', main_qn.model.get_weights())
-	main_qn.model.save('dqn_model.h5')
-	
