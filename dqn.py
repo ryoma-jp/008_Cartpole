@@ -243,4 +243,6 @@ if __name__ == '__main__':
 	plt.show()
 	plt.close(fig)
 	
+	np.save('dqn_weights.npy', main_qn.model.get_weights())
+	main_qn.model.save('dqn_model.h5')
 	
